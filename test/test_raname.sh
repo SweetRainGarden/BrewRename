@@ -48,7 +48,7 @@ test_basic_rename() {
     echo "foo content" > "$BASE_TEST_DIR/foo_dir/foo_file.txt"
 
     # Run raname.sh
-    bash bin/raname.sh foo bar "$BASE_TEST_DIR" > /dev/null 2>&1
+    bash bin/raname.sh 'foo:bar' "$BASE_TEST_DIR" > /dev/null 2>&1
 
     # Verify
     [ -d "$BASE_TEST_DIR/bar_dir" ] &&
@@ -63,7 +63,7 @@ test_dry_run() {
     touch "$BASE_TEST_DIR/foo_file.txt"
 
     # Run raname.sh with --dry-run
-    bash bin/raname.sh --dry-run foo bar "$BASE_TEST_DIR" > /dev/null 2>&1
+    bash bin/raname.sh --dry-run 'foo:bar' "$BASE_TEST_DIR" > /dev/null 2>&1
 
     # Verify that files are unchanged
     [ -d "$BASE_TEST_DIR/foo_dir" ] &&
@@ -78,13 +78,11 @@ test_copy_mode_root_change() {
     touch "$BASE_TEST_DIR/foo_project/src/foo_file.txt"
 
     # Run raname.sh with --copy
-    bash bin/raname.sh --copy foo bar "$BASE_TEST_DIR/foo_project" > /dev/null 2>&1
+    bash bin/raname.sh --copy 'foo:bar' "$BASE_TEST_DIR/foo_project" > /dev/null 2>&1
 
-    # Verify original directory exists
+    # Verify original directory is untouched and the renamed copy exists
     [ -d "$BASE_TEST_DIR/foo_project" ] &&
-    [ -f "$BASE_TEST_DIR/foo_project/src/foo_file.txt" ]
-
-    # Verify copied directory exists with renamed contents
+    [ -f "$BASE_TEST_DIR/foo_project/src/foo_file.txt" ] &&
     [ -d "$BASE_TEST_DIR/bar_project" ] &&
     [ -f "$BASE_TEST_DIR/bar_project/src/bar_file.txt" ]
 }
@@ -96,13 +94,11 @@ test_exclude_directories() {
     touch "$BASE_TEST_DIR/exclude_dir/foo.txt"
 
     # Run raname.sh with exclude option
-    bash bin/raname.sh -e exclude_dir foo bar "$BASE_TEST_DIR" > /dev/null 2>&1
+    bash bin/raname.sh -e exclude_dir 'foo:bar' "$BASE_TEST_DIR" > /dev/null 2>&1
 
-    # Verify included directory is renamed
+    # Verify included directory is renamed and excluded directory is unchanged
     [ -d "$BASE_TEST_DIR/include_dir" ] &&
-    [ -f "$BASE_TEST_DIR/include_dir/bar.txt" ]
-
-    # Verify excluded directory is unchanged
+    [ -f "$BASE_TEST_DIR/include_dir/bar.txt" ] &&
     [ -d "$BASE_TEST_DIR/exclude_dir" ] &&
     [ -f "$BASE_TEST_DIR/exclude_dir/foo.txt" ] &&
     [ ! -f "$BASE_TEST_DIR/exclude_dir/bar.txt" ]
@@ -114,12 +110,12 @@ test_strict_mode() {
     touch "$BASE_TEST_DIR/Foo.txt" "$BASE_TEST_DIR/foo.txt"
 
     # Run raname.sh in strict mode
-    bash bin/raname.sh --strict foo bar "$BASE_TEST_DIR" > /dev/null 2>&1
+    bash bin/raname.sh --strict 'foo:bar' "$BASE_TEST_DIR" > /dev/null 2>&1
 
-    # Verify only exact case is renamed
+    # Verify only the exact case is renamed
     [ -f "$BASE_TEST_DIR/Foo.txt" ] &&
-    [ ! -f "$BASE_TEST_DIR/bar.txt" ] &&
-    [ -f "$BASE_TEST_DIR/foo.txt" ]
+    [ -f "$BASE_TEST_DIR/bar.txt" ] &&
+    [ ! -f "$BASE_TEST_DIR/foo.txt" ]
 }
 
 # Test 6: Handle special characters
@@ -128,35 +124,40 @@ test_special_characters() {
     touch "$BASE_TEST_DIR/foo*file?.txt"
 
     # Run raname.sh
-    bash bin/raname.sh 'foo*file?' 'bar_file' "$BASE_TEST_DIR" > /dev/null 2>&1
+    bash bin/raname.sh --strict 'foo*file?:bar_file' "$BASE_TEST_DIR" > /dev/null 2>&1
 
     # Verify file is renamed correctly
-    [ -f "$BASE_TEST_DIR/bar_file.txt" ]
+    [ -f "$BASE_TEST_DIR/bar_file.txt" ] &&
+    [ ! -f "$BASE_TEST_DIR/foo*file?.txt" ]
 }
 
 # Test 7: Multiple pairs
 test_multiple_pairs() {
     mkdir -p "$BASE_TEST_DIR/foo_dir"
-    touch "$BASE_TEST_DIR/foo_dir/foo_file.txt"
+    touch "$BASE_TEST_DIR/foo_dir/baz_file.txt"
 
     # Run raname.sh with multiple pairs
     bash bin/raname.sh 'foo:bar,baz:qux' "$BASE_TEST_DIR" > /dev/null 2>&1
 
     # Verify renames
     [ -d "$BASE_TEST_DIR/bar_dir" ] &&
-    [ -f "$BASE_TEST_DIR/bar_dir/bar_file.txt" ]
+    [ -f "$BASE_TEST_DIR/bar_dir/qux_file.txt" ]
 }
 
-# Test 8: Error handling for copy mode without root change
+# Test 8: Copy mode without root change is rejected and leaves everything intact
 test_copy_mode_no_root_change() {
     mkdir -p "$BASE_TEST_DIR/project/src"
     touch "$BASE_TEST_DIR/project/src/foo.txt"
 
-    # Run raname.sh with --copy but no root change
-    bash bin/raname.sh --copy src source "$BASE_TEST_DIR/project" > /dev/null 2>&1
+    # Run raname.sh with --copy but no root change: must fail
+    if bash bin/raname.sh --copy 'src:source' "$BASE_TEST_DIR/project" > /dev/null 2>&1; then
+        return 1
+    fi
 
-    # Verify copy did not occur (since root was not changed)
-    [ ! -d "$BASE_TEST_DIR/project_copy" ]
+    # Verify nothing was modified
+    [ -d "$BASE_TEST_DIR/project/src" ] &&
+    [ -f "$BASE_TEST_DIR/project/src/foo.txt" ] &&
+    [ ! -d "$BASE_TEST_DIR/project/source" ]
 }
 
 # Run all tests
@@ -177,4 +178,4 @@ echo -e "${RED}Failed: $TESTS_FAILED${NC}"
 # Exit with error code if any tests failed
 if [ $TESTS_FAILED -gt 0 ]; then
     exit 1
-fi 
+fi
