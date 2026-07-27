@@ -1,0 +1,108 @@
+diff --git a/.github/workflows/pr.yml b/.github/workflows/pr.yml
+index 561907f..20309d0 100644
+--- a/.github/workflows/pr.yml
++++ b/.github/workflows/pr.yml
+@@ -12,15 +12,15 @@ jobs:
+ 
+       - name: Check script permissions
+         run: |
+-          test -x bin/rename || (echo "bin/rename must be executable" && exit 1)
+-          test -x test/test_rename.sh || (echo "test/test_rename.sh must be executable" && exit 1)
++          test -x bin/raname.sh || (echo "bin/raname.sh must be executable" && exit 1)
++          test -x test/test_raname.sh || (echo "test/test_raname.sh must be executable" && exit 1)
+ 
+       - name: Run tests
+-        run: ./test/test_rename.sh
++        run: ./test/test_raname.sh
+ 
+       - name: Verify documentation
+         run: |
+           test -f README.md || (echo "README.md is missing" && exit 1)
+           test -f LICENSE || (echo "LICENSE is missing" && exit 1)
+           grep -q "## Usage" README.md || (echo "Usage section missing in README" && exit 1)
+-          grep -q "## Installation" README.md || (echo "Installation section missing in README" && exit 1) 
+\ No newline at end of file
++          grep -q "## Installation" README.md || (echo "Installation section missing in README" && exit 1)
+diff --git a/.github/workflows/release.yml b/.github/workflows/release.yml
+index a7cd3c3..0a53b29 100644
+--- a/.github/workflows/release.yml
++++ b/.github/workflows/release.yml
+@@ -11,7 +11,11 @@ jobs:
+     permissions:
+       contents: write
+     steps:
++      # Check out the default branch (not the tag's detached HEAD) so the
++      # formula update can be committed and pushed
+       - uses: actions/checkout@v4
++        with:
++          ref: develop
+ 
+       - name: Get version from tag
+         id: get_version
+@@ -26,23 +30,25 @@ jobs:
+             --generate-notes
+ 
+       - name: Update Homebrew formula
+-        env:
+-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+         run: |
+           # Download the release tarball
+           TARBALL_URL="https://github.com/${{ github.repository }}/archive/refs/tags/${{ env.VERSION }}.tar.gz"
+-          wget $TARBALL_URL
+-          
++          wget -q "$TARBALL_URL"
++
+           # Calculate SHA256
+           SHA256=$(sha256sum "${{ env.VERSION }}.tar.gz" | cut -d' ' -f1)
+-          
++
++          # Strip the leading "v" for the formula version field
++          VERSION_NUM="${VERSION#v}"
++
+           # Update formula
+-          sed -i "s|url.*|url \"$TARBALL_URL\"|" tap/Formula/rename.rb
+-          sed -i "s|sha256.*|sha256 \"$SHA256\"|" tap/Formula/rename.rb
+-          
++          sed -i "s|^  url .*|  url \"$TARBALL_URL\"|" Formula/raname.rb
++          sed -i "s|^  version .*|  version \"$VERSION_NUM\"|" Formula/raname.rb
++          sed -i "s|^  sha256 .*|  sha256 \"$SHA256\"|" Formula/raname.rb
++
+           # Commit and push changes
+           git config --global user.email "github-actions[bot]@users.noreply.github.com"
+           git config --global user.name "GitHub Actions"
+-          git add tap/Formula/rename.rb
++          git add Formula/raname.rb
+           git commit -m "Update formula for ${{ env.VERSION }}"
+-          git push 
+\ No newline at end of file
++          git push origin develop
+diff --git a/.github/workflows/test.yml b/.github/workflows/test.yml
+index f6f6750..0b18967 100644
+--- a/.github/workflows/test.yml
++++ b/.github/workflows/test.yml
+@@ -13,11 +13,6 @@ jobs:
+     steps:
+     - uses: actions/checkout@v4
+ 
+-    - name: Set up test environment
+-      run: |
+-        mkdir -p test_dir
+-        echo "test content" > test_dir/foo.txt
+-
+     - name: Run test script
+       run: |
+         chmod +x test/test_raname.sh
+@@ -26,5 +21,10 @@ jobs:
+     - name: Test script directly
+       run: |
+         chmod +x bin/raname.sh
+-        ./bin/raname.sh --dry-run foo bar test_dir
+-        ./bin/raname.sh foo bar test_dir 
+\ No newline at end of file
++        # Work on a scratch copy so the committed fixtures stay untouched
++        cp -r test_dir scratch_dir
++        ./bin/raname.sh --version
++        ./bin/raname.sh --dry-run 'foo:bar' scratch_dir
++        ./bin/raname.sh 'foo:bar' scratch_dir
++        test -f scratch_dir/multiple/multiple_bar.txt
++        git diff --exit-code -- test_dir
